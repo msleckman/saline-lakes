@@ -7,6 +7,7 @@ p1_targets_list <- list(
   tar_target(
     p1_lakes_sf,
     {read_csv('1_fetch/in/saline_lakes.csv', col_types = 'ccnn') %>% 
+      # Turn to an SF obj
       st_as_sf(coords = c('Lon','Lat'), crs = selected_crs) %>% 
       rename(point_geometry = geometry, lake = `Lake Ecosystem`, state = State) %>% 
       mutate(state_abbr = case_when(state == 'California' ~ 'CA',
@@ -48,7 +49,6 @@ p1_targets_list <- list(
     p1_huc04_for_download,
     substr(p1_huc08_df$huc8, start = 1, stop = 4) %>% unique()
   ),
-  
   
 # Download high res nhd data to get lake water bodies #
   ## 2 OPTIONS - 1) try downloading by running the `p1_download_nhdhr_lakes_path` target below with download_nhdplushr() from the nhdplusTools R package. 
@@ -98,44 +98,19 @@ p1_targets_list <- list(
       st_transform(crs = st_crs(p2_saline_lakes_sf)) %>% st_join(p2_saline_lakes_sf) %>%
       filter(!is.na(GNIS_Name))
     ),
-
-  # Grab vector of our huc08s in order to run branching for nhd flowlines fetch  
-  tar_target(
-    p1_huc8_vec, 
-    {unique(p1_get_lakes_huc8_sf$HUC8)}
-  ),
-
-  # Fetch nhdplus flowlines for each huc8 region separately through dynamic branching - note difference between branches 
-  tar_target(
-    p1_lake_flowlines_huc8_sf,
-    {get_nhdplus(AOI = {p1_get_lakes_huc8_sf %>% filter(HUC8 == p1_huc8_vec)},
-                 realization = 'flowline') %>%
-        ## making as dataframe to load with tar_load()
-        #as.data.frame() %>% 
-        ## fixing col that are automatically transforming to char
-        mutate(across(c(surfarea, lakefract, rareahload), ~as.numeric(.x)),
-               HUC8 = p1_huc8_vec) 
-        ## filtering out flowlines w/ vals below 1 (can be move to process)
-    #    filter(streamorde >= 3)
-      }, 
-    pattern = map(p1_huc8_vec)
-  ),
   
-  # Fetch NWIS sites along tributaries and in our huc08 regions. 
-  ## Will require further filtering (e.g. ftype == ST, along flowlines only)
+  # Broad fetch of all flowlines that feed into our focal saline lakes
   tar_target(
-    p1_nwis_sites,
-    {tryCatch(expr = get_huc8(id = p1_huc8_vec) %>% get_nwis(AOI = .) %>%
-                ## making as dataframe to load with tar_load()
-                #as.data.frame() %>% 
-                mutate(HUC8 = p1_huc8_vec),
-              error = function(e){message(paste('error - No gages found in huc8', p1_huc8_vec))})},
-  pattern = map(p1_huc8_vec)
+    p1_fetch_flowlines_network,
+    fetch_all_lake_basin_flowlines(p2_saline_lakes_sf,
+                                   gpkg_file_out = '1_fetch/out/p1_all_flowlines.gpkg',
+                                  buffer_dist = 10^5.4)
+    
   ),
 
-  ## Pulling site no from gauge sites to then query nwis and WQP with data retrieval
   tar_target(
-    p1_site_ids,
-    {p1_nwis_sites %>% pull(site_no) %>% unique()}
-  )
+    p1_flowlines_network,
+    st_read('1_fetch/out/p1_all_flowlines.gpkg', layer = 'p1_all_flowlines')
+    )
+
 )

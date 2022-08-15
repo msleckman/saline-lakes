@@ -11,7 +11,7 @@ scope_lake_tributaries <- function(fline_network,
   #'@param realization either flowline or catchment. Must input only 1, unlike with this param in get_nhdplus() 
   #'@param stream_order stream order level. Defaults See get_nhdplus() for further details
   #'@value nhdplus sf dataframe of flowlines or catchments of reaches Upstream of focal lakes
-  
+
   # CHECKS
   ## flines layer geometries 
   if(any(!st_is_valid(fline_network))){
@@ -34,7 +34,7 @@ scope_lake_tributaries <- function(fline_network,
   } else {
     message('crs are already aligned')
   }
-  
+
   # Buffer lakes if not null  
   ## Comid reaches in lake = buffering by 10000 because many lakes don't have flowlines inside lake
   if(!is.null(buffer_dist)){
@@ -43,11 +43,20 @@ scope_lake_tributaries <- function(fline_network,
     lakes_buffered_sf <- lakes_sf
     }
   
+  # fline network - cleaning
+  ## remove duplicate comids
+  fline_network_dist <- fline_network %>% distinct(comid, .keep_all = TRUE)
+  ## change case to upper if not upper
+  if('comid' %in% names(fline_network_dist)){
+    print('is upper')
+    fline_network_dist <- rename(fline_network_dist, COMID = comid)
+  }
+  
   # Intersect to grab only flowlines within lake buffer
-  reach_in_lake <- st_join(fline_network, lakes_buffered_sf, left =FALSE)
+  reach_in_lake <- st_join(fline_network_dist, lakes_buffered_sf) %>% filter(!is.na(lake_w_state))
 
   # Get Upstream tribs - chunking to process faster without potential errors
-  lake_UT <- get_UT(comid = reach_in_lake$comid, network = fline_network) %>% 
+  lake_UT <- get_UT(comid = reach_in_lake$COMID, network = fline_network_dist) %>% 
     split(., ceiling(seq_along(.)/50))
   
   # Running get_nhdplustools() in lake_UT chunks
