@@ -1,5 +1,6 @@
 source('1_fetch/src/fetch_by_site_and_service.R')
 source('1_fetch/src/get_NWIS_site_no.R')
+source('1_fetch/src/get_wqp_pcodes.R')
 
 p1_nw_targets_list <- list(
   
@@ -27,6 +28,26 @@ p1_nw_targets_list <- list(
         tar_group()
     },
     iteration = 'group'
+  ),
+  
+  ## WQ
+  tar_target(
+    p1_wqp_pcodes_df,
+    get_wqp_pcodes(p1_site_no_by_lake, sites_col = 'site_no'),
+    pattern = map(p1_site_no_by_lake),
+    iteration = 'list'
+  ),
+  
+  tar_target(
+    p1_wqp_pcodes,
+    lapply(p1_wqp_pcodes_df, function(x) x %>% pull(USGSPCode) %>% unique())
+    %>% Reduce(c,.) %>% unique()
+  ),
+  
+  tar_target(
+    p1_full_pcodes_tbl,
+    dataRetrieval::readNWISpCode('all') %>%
+      filter(parameter_cd %in% p1_wqp_pcodes)
   ),
   
   # SW
